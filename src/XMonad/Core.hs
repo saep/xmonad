@@ -495,7 +495,7 @@ recompile force = io $ do
         -- re-enable SIGCHLD:
         installSignalHandlers
 
-        -- now, if it fails, run xmessage to let the user know:
+        -- now, if it fails, run notify-send to let the user know:
         when (status /= ExitSuccess) $ do
             ghcErr <- readFile err
             let msg = unlines $
@@ -505,7 +505,8 @@ recompile force = io $ do
             -- nb, the ordering of printing, then forking, is crucial due to
             -- lazy evaluation
             hPutStrLn stderr msg
-            forkProcess $ executeFile "xmessage" True ["-default", "okay", replaceUnicode msg] Nothing
+            forkProcess $ executeFile "notify-send" True
+                ["-t", "600000", "-u", "critical", "XMonad compile error!", replaceUnicode msg] Nothing
             return ()
         return (status == ExitSuccess)
       else return True
