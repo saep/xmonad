@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification, FlexibleInstances, GeneralizedNewtypeDeriving,
-             MultiParamTypeClasses, TypeSynonymInstances, DeriveDataTypeable #-}
+             MultiParamTypeClasses, TypeSynonymInstances, DeriveDataTypeable,
+             NoImplicitPrelude #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -23,9 +24,9 @@ module XMonad.Core (
     Layout(..), readsLayout, Typeable, Message,
     SomeMessage(..), fromMessage, LayoutMessages(..),
     StateExtension(..), ExtensionClass(..),
-    runX, catchX, userCode, userCodeDef, io, catchIO, installSignalHandlers, uninstallSignalHandlers,
+    runX, catchX, userCode, userCodeDef, io, XMonad.Core.catchIO, installSignalHandlers, uninstallSignalHandlers,
     withDisplay, withWindowSet, isRoot, runOnWorkspaces,
-    getAtom, spawn, spawnPID, xfork, recompile, trace, whenJust, whenX,
+    getAtom, spawn, spawnPID, xfork, recompile, XMonad.Core.trace, whenJust, whenX,
     getXMonadDir, getXMonadCacheDir, getXMonadDataDir, stateFileName,
     atom_WM_STATE, atom_WM_PROTOCOLS, atom_WM_DELETE_WINDOW, atom_WM_TAKE_FOCUS, withWindowAttributes,
     ManageHook, Query(..), runQuery
@@ -34,8 +35,6 @@ module XMonad.Core (
 import XMonad.StackSet hiding (modify)
 
 import Prelude
-import Control.Exception.Extensible (fromException, try, bracket, throw, finally, SomeException(..))
-import qualified Control.Exception.Extensible as E
 import Control.Applicative(Applicative, pure, (<$>), (<*>))
 import Control.Monad.Fail
 import Control.Monad.State
@@ -43,7 +42,7 @@ import Control.Monad.Reader
 import Data.Semigroup
 import Data.Default
 import System.FilePath
-import System.IO
+import qualified System.IO as IO
 import System.Info
 import System.Posix.Env (getEnv)
 import System.Posix.Process (executeFile, forkProcess, getAnyProcessStatus, createSession)
@@ -53,24 +52,25 @@ import System.Posix.Types (ProcessID)
 import System.Process
 import System.Directory
 import System.Exit
-import Graphics.X11.Xlib
+import qualified Graphics.X11.Xlib as X
 import Graphics.X11.Xlib.Extras (getWindowAttributes, WindowAttributes, Event)
 import Data.Typeable
 import Data.List ((\\))
 import Data.Maybe (isJust,fromMaybe)
 import Data.Monoid hiding ((<>))
 import System.Environment (lookupEnv)
+import RIO
 
-import qualified Data.Map as M
-import qualified Data.Set as S
+import qualified RIO.Map as M
+import qualified RIO.Set as S
 
 -- | XState, the (mutable) window manager state.
 data XState = XState
     { windowset        :: !WindowSet                     -- ^ workspace list
-    , mapped           :: !(S.Set Window)                -- ^ the Set of mapped windows
-    , waitingUnmap     :: !(M.Map Window Int)            -- ^ the number of expected UnmapEvents
-    , dragging         :: !(Maybe (Position -> Position -> X (), X ()))
-    , numberlockMask   :: !KeyMask                       -- ^ The numlock modifier
+    , mapped           :: !(S.Set X.Window)              -- ^ the Set of mapped windows
+    , waitingUnmap     :: !(M.Map X.Window Int)          -- ^ the number of expected UnmapEvents
+    , dragging         :: !(Maybe (X.Position -> X.Position -> X (), X ()))
+    , numberlockMask   :: !X.KeyMask                     -- ^ The numlock modifier
     , extensibleState  :: !(M.Map String (Either String StateExtension))
     -- ^ stores custom state information.
     --
@@ -80,21 +80,26 @@ data XState = XState
 
 -- | XConf, the (read-only) window manager configuration.
 data XConf = XConf
-    { display       :: Display        -- ^ the X11 display
+    { display       :: X.Display        -- ^ the X11 display
     , config        :: !(XConfig Layout)       -- ^ initial user configuration
-    , theRoot       :: !Window        -- ^ the root window
-    , normalBorder  :: !Pixel         -- ^ border color of unfocused windows
-    , focusedBorder :: !Pixel         -- ^ border color of the focused window
-    , keyActions    :: !(M.Map (KeyMask, KeySym) (X ()))
+    , theRoot       :: !X.Window        -- ^ the root window
+    , normalBorder  :: !X.Pixel         -- ^ border color of unfocused windows
+    , focusedBorder :: !X.Pixel         -- ^ border color of the focused window
+    , keyActions    :: !(M.Map (X.KeyMask, X.KeySym) (X ()))
                                       -- ^ a mapping of key presses to actions
-    , buttonActions :: !(M.Map (KeyMask, Button) (Window -> X ()))
+    , buttonActions :: !(M.Map (X.KeyMask, X.Button) (X.Window -> X ()))
                                       -- ^ a mapping of button presses to actions
     , mouseFocused :: !Bool           -- ^ was refocus caused by mouse action?
-    , mousePosition :: !(Maybe (Position, Position))
+    , mousePosition :: !(Maybe (X.Position, X.Position))
                                       -- ^ position of the mouse according to
                                       -- the event currently being processed
     , currentEvent :: !(Maybe Event)
                                       -- ^ event currently being processed
+    }
+
+data Env = Env
+    { xState :: TVar XState
+    , xConf  :: XConf
     }
 
 -- todo, better name
@@ -102,31 +107,31 @@ data XConfig l = XConfig
     { normalBorderColor  :: !String              -- ^ Non focused windows border color. Default: \"#dddddd\"
     , focusedBorderColor :: !String              -- ^ Focused windows border color. Default: \"#ff0000\"
     , terminal           :: !String              -- ^ The preferred terminal application. Default: \"xterm\"
-    , layoutHook         :: !(l Window)          -- ^ The available layouts
+    , layoutHook         :: !(l X.Window)        -- ^ The available layouts
     , manageHook         :: !ManageHook          -- ^ The action to run when a new window is opened
     , handleEventHook    :: !(Event -> X All)    -- ^ Handle an X event, returns (All True) if the default handler
                                                  -- should also be run afterwards. mappend should be used for combining
                                                  -- event hooks in most cases.
     , workspaces         :: ![String]            -- ^ The list of workspaces' names
-    , modMask            :: !KeyMask             -- ^ the mod modifier
-    , keys               :: !(XConfig Layout -> M.Map (ButtonMask,KeySym) (X ()))
+    , modMask            :: !X.KeyMask             -- ^ the mod modifier
+    , keys               :: !(XConfig Layout -> M.Map (X.ButtonMask,X.KeySym) (X ()))
                                                  -- ^ The key binding: a map from key presses and actions
-    , mouseBindings      :: !(XConfig Layout -> M.Map (ButtonMask, Button) (Window -> X ()))
+    , mouseBindings      :: !(XConfig Layout -> M.Map (X.ButtonMask, X.Button) (X.Window -> X ()))
                                                  -- ^ The mouse bindings
-    , borderWidth        :: !Dimension           -- ^ The border width
+    , borderWidth        :: !X.Dimension         -- ^ The border width
     , logHook            :: !(X ())              -- ^ The action to perform when the windows set is changed
     , startupHook        :: !(X ())              -- ^ The action to perform on startup
     , focusFollowsMouse  :: !Bool                -- ^ Whether window entry events can change focus
     , clickJustFocuses   :: !Bool                -- ^ False to make a click which changes focus to be additionally passed to the window
-    , clientMask         :: !EventMask           -- ^ The client events that xmonad is interested in
-    , rootMask           :: !EventMask           -- ^ The root events that xmonad is interested in
+    , clientMask         :: !X.EventMask         -- ^ The client events that xmonad is interested in
+    , rootMask           :: !X.EventMask         -- ^ The root events that xmonad is interested in
     , handleExtraArgs    :: !([String] -> XConfig Layout -> IO (XConfig Layout))
                                                  -- ^ Modify the configuration, complain about extra arguments etc. with arguments that are not handled by default
     }
 
 
-type WindowSet   = StackSet  WorkspaceId (Layout Window) Window ScreenId ScreenDetail
-type WindowSpace = Workspace WorkspaceId (Layout Window) Window
+type WindowSet   = StackSet  WorkspaceId (Layout X.Window) X.Window ScreenId ScreenDetail
+type WindowSpace = Workspace WorkspaceId (Layout X.Window) X.Window
 
 -- | Virtual workspace indices
 type WorkspaceId = String
@@ -135,7 +140,7 @@ type WorkspaceId = String
 newtype ScreenId    = S Int deriving (Eq,Ord,Show,Read,Enum,Num,Integral,Real)
 
 -- | The 'Rectangle' with screen dimensions
-data ScreenDetail   = SD { screenRect :: !Rectangle } deriving (Eq,Show, Read)
+data ScreenDetail   = SD { screenRect :: !X.Rectangle } deriving (Eq,Show, Read)
 
 ------------------------------------------------------------------------
 
@@ -147,12 +152,26 @@ data ScreenDetail   = SD { screenRect :: !Rectangle } deriving (Eq,Show, Read)
 -- with 'ask'. With newtype deriving we get readers and state monads
 -- instantiated on 'XConf' and 'XState' automatically.
 --
-newtype X a = X (ReaderT XConf (StateT XState IO) a)
-    deriving (Functor, Monad, MonadFail, MonadIO, MonadState XState, MonadReader XConf, Typeable)
+--newtype X a = X (ReaderT XConf (StateT XState IO) a)
+newtype X a = X (RIO Env a)
+    deriving (Functor, Applicative, Monad, MonadIO, Typeable, MonadUnliftIO)
 
-instance Applicative X where
-  pure = return
-  (<*>) = ap
+instance MonadReader XConf X where
+  ask = X $ asks xConf
+  local f (X a) = do
+    e <- X ask
+    runRIO e{ xConf = f (xConf e)} a
+  
+instance MonadState XState X where
+  get = X $ do
+    st <- asks xState
+    atomically $ readTVar st
+  put st' = X $ do 
+    st <- asks xState
+    atomically $ writeTVar st st'
+
+instance MonadFail X where
+  fail = error
 
 instance Semigroup a => Semigroup (X a) where
     (<>) = liftM2 (<>)
@@ -165,10 +184,10 @@ instance Default a => Default (X a) where
     def = return def
 
 type ManageHook = Query (Endo WindowSet)
-newtype Query a = Query (ReaderT Window X a)
-    deriving (Functor, Applicative, Monad, MonadReader Window, MonadIO)
+newtype Query a = Query (ReaderT X.Window X a)
+    deriving (Functor, Applicative, Monad, MonadReader X.Window, MonadIO)
 
-runQuery :: Query a -> Window -> X a
+runQuery :: Query a -> X.Window -> X a
 runQuery (Query m) w = runReaderT m w
 
 instance Semigroup a => Semigroup (Query a) where
@@ -184,7 +203,11 @@ instance Default a => Default (Query a) where
 -- | Run the 'X' monad, given a chunk of 'X' monad code, and an initial state
 -- Return the result, and final state
 runX :: XConf -> XState -> X a -> IO (a, XState)
-runX c st (X a) = runStateT (runReaderT a c) st
+runX c st (X action) = do
+  st' <- newTVarIO st
+  a <- runRIO (Env st' c) action
+  st'' <- atomically $ readTVar st'
+  pure (a, st'')
 
 -- | Run in the 'X' monad, and in case of exception, and catch it and log it
 -- to stderr, and run the error case.
@@ -192,9 +215,9 @@ catchX :: X a -> X a -> X a
 catchX job errcase = do
     st <- get
     c <- ask
-    (a, s') <- io $ runX c st job `E.catch` \e -> case fromException e of
-                        Just x -> throw e `const` (x `asTypeOf` ExitSuccess)
-                        _ -> do hPrint stderr e; runX c st errcase
+    (a, s') <- io $ runX c st job `catch` \e -> case fromException e of
+                        Just x -> RIO.throwIO e `const` (x `asTypeOf` ExitSuccess)
+                        _ -> do IO.hPrint stderr e; runX c st errcase
     put s'
     return a
 
@@ -212,29 +235,29 @@ userCodeDef defValue a = fromMaybe defValue `liftM` userCode a
 -- Convenient wrappers to state
 
 -- | Run a monad action with the current display settings
-withDisplay :: (Display -> X a) -> X a
-withDisplay   f = asks display >>= f
+withDisplay :: (X.Display -> X a) -> X a
+withDisplay   f = asks XMonad.Core.display >>= f
 
 -- | Run a monadic action with the current stack set
 withWindowSet :: (WindowSet -> X a) -> X a
 withWindowSet f = gets windowset >>= f
 
 -- | Safely access window attributes.
-withWindowAttributes :: Display -> Window -> (WindowAttributes -> X ()) -> X ()
+withWindowAttributes :: X.Display -> X.Window -> (WindowAttributes -> X ()) -> X ()
 withWindowAttributes dpy win f = do
     wa <- userCode (io $ getWindowAttributes dpy win)
     catchX (whenJust wa f) (return ())
 
 -- | True if the given window is the root window
-isRoot :: Window -> X Bool
+isRoot :: X.Window -> X Bool
 isRoot w = (w==) <$> asks theRoot
 
 -- | Wrapper for the common case of atom internment
-getAtom :: String -> X Atom
-getAtom str = withDisplay $ \dpy -> io $ internAtom dpy str False
+getAtom :: String -> X X.Atom
+getAtom str = withDisplay $ \dpy -> io $ X.internAtom dpy str False
 
 -- | Common non-predefined atoms
-atom_WM_PROTOCOLS, atom_WM_DELETE_WINDOW, atom_WM_STATE, atom_WM_TAKE_FOCUS :: X Atom
+atom_WM_PROTOCOLS, atom_WM_DELETE_WINDOW, atom_WM_STATE, atom_WM_TAKE_FOCUS :: X X.Atom
 atom_WM_PROTOCOLS       = getAtom "WM_PROTOCOLS"
 atom_WM_DELETE_WINDOW   = getAtom "WM_DELETE_WINDOW"
 atom_WM_STATE           = getAtom "WM_STATE"
@@ -280,8 +303,8 @@ class Show (layout a) => LayoutClass layout a where
     --   use of more of the 'Workspace' information (for example,
     --   "XMonad.Layout.PerWorkspace").
     runLayout :: Workspace WorkspaceId (layout a) a
-              -> Rectangle
-              -> X ([(a, Rectangle)], Maybe (layout a))
+              -> X.Rectangle
+              -> X ([(a, X.Rectangle)], Maybe (layout a))
     runLayout (Workspace _ l ms) r = maybe (emptyLayout l r) (doLayout l r) ms
 
     -- | Given a 'Rectangle' in which to place the windows, and a 'Stack'
@@ -298,18 +321,18 @@ class Show (layout a) => LayoutClass layout a where
     -- Layouts which do not need access to the 'X' monad ('IO', window
     -- manager state, or configuration) and do not keep track of their
     -- own state should implement 'pureLayout' instead of 'doLayout'.
-    doLayout    :: layout a -> Rectangle -> Stack a
-                -> X ([(a, Rectangle)], Maybe (layout a))
+    doLayout    :: layout a -> X.Rectangle -> Stack a
+                -> X ([(a, X.Rectangle)], Maybe (layout a))
     doLayout l r s   = return (pureLayout l r s, Nothing)
 
     -- | This is a pure version of 'doLayout', for cases where we
     -- don't need access to the 'X' monad to determine how to lay out
     -- the windows, and we don't need to modify the layout itself.
-    pureLayout  :: layout a -> Rectangle -> Stack a -> [(a, Rectangle)]
+    pureLayout  :: layout a -> X.Rectangle -> Stack a -> [(a, X.Rectangle)]
     pureLayout _ r s = [(focus s, r)]
 
     -- | 'emptyLayout' is called when there are no windows.
-    emptyLayout :: layout a -> Rectangle -> X ([(a, Rectangle)], Maybe (layout a))
+    emptyLayout :: layout a -> X.Rectangle -> X ([(a, X.Rectangle)], Maybe (layout a))
     emptyLayout _ _ = return ([], Nothing)
 
     -- | 'handleMessage' performs message handling.  If
@@ -337,7 +360,7 @@ class Show (layout a) => LayoutClass layout a where
     description :: layout a -> String
     description      = show
 
-instance LayoutClass Layout Window where
+instance LayoutClass Layout X.Window where
     runLayout (Workspace i (Layout l) ms) r = fmap (fmap Layout) `fmap` runLayout (Workspace i l ms) r
     doLayout (Layout l) r s  = fmap (fmap Layout) `fmap` doLayout l r s
     emptyLayout (Layout l) r = fmap (fmap Layout) `fmap` emptyLayout l r
@@ -413,8 +436,8 @@ io = liftIO
 
 -- | Lift an 'IO' action into the 'X' monad.  If the action results in an 'IO'
 -- exception, log the exception to stderr and continue normal execution.
-catchIO :: MonadIO m => IO () -> m ()
-catchIO f = io (f `E.catch` \(SomeException e) -> hPrint stderr e >> hFlush stderr)
+catchIO :: (MonadIO m, MonadUnliftIO m) => IO () -> m ()
+catchIO f = io (f `catchAny` \e -> IO.hPrint stderr e >> hFlush stderr)
 
 -- | spawn. Launch an external application. Specifically, it double-forks and
 -- runs the 'String' you pass as a command to \/bin\/sh.
@@ -445,7 +468,7 @@ runOnWorkspaces :: (WindowSpace -> X WindowSpace) -> X ()
 runOnWorkspaces job = do
     ws <- gets windowset
     h <- mapM job $ hidden ws
-    c:v <- mapM (\s -> (\w -> s { workspace = w}) <$> job (workspace s))
+    ~(c:v) <- mapM (\s -> (\w -> s { workspace = w}) <$> job (workspace s))
              $ current ws : visible ws
     modify $ \s -> s { windowset = ws { current = c, visible = v, hidden = h } }
 
@@ -552,13 +575,13 @@ getXDGDirectory :: XDGDirectory -> FilePath -> IO FilePath
 getXDGDirectory xdgDir suffix =
   normalise . (</> suffix) <$>
   case xdgDir of
-    XDGData   -> get "XDG_DATA_HOME"   ".local/share"
-    XDGConfig -> get "XDG_CONFIG_HOME" ".config"
-    XDGCache  -> get "XDG_CACHE_HOME"  ".cache"
+    XDGData   -> getDir "XDG_DATA_HOME"   ".local/share"
+    XDGConfig -> getDir "XDG_CONFIG_HOME" ".config"
+    XDGCache  -> getDir "XDG_CACHE_HOME"  ".cache"
   where
-    get name fallback = do
-      env <- lookupEnv name
-      case env of
+    getDir name fallback = do
+      envName <- lookupEnv name
+      case envName of
         Nothing -> fallback'
         Just path
           | isRelative path -> fallback'
@@ -612,16 +635,16 @@ recompile force = io $ do
           isExe <- isExecutable buildscript
           if isExe
             then do
-              trace $ "XMonad will use build script at " ++ show buildscript ++ " to recompile."
+              XMonad.Core.trace $ "XMonad will use build script at " ++ show buildscript ++ " to recompile."
               return True
             else do
-              trace $ unlines
+              XMonad.Core.trace $ unlines
                 [ "XMonad will not use build script, because " ++ show buildscript ++ " is not executable."
                 , "Suggested resolution to use it: chmod u+x " ++ show buildscript
                 ]
               return False
         else do
-          trace $
+          XMonad.Core.trace $
             "XMonad will use ghc to recompile, because " ++ show buildscript ++ " does not exist."
           return False
 
@@ -630,17 +653,17 @@ recompile force = io $ do
         then return True
         else if any (binT <) (srcT : libTs)
           then do
-            trace "XMonad doing recompile because some files have changed."
+            XMonad.Core.trace "XMonad doing recompile because some files have changed."
             return True
           else do
-            trace "XMonad skipping recompile because it is not forced (e.g. via --recompile), and neither xmonad.hs nor any *.hs / *.lhs / *.hsc files in lib/ have been changed."
+            XMonad.Core.trace "XMonad skipping recompile because it is not forced (e.g. via --recompile), and neither xmonad.hs nor any *.hs / *.lhs / *.hsc files in lib/ have been changed."
             return False
 
     if shouldRecompile
       then do
         -- temporarily disable SIGCHLD ignoring:
         uninstallSignalHandlers
-        status <- bracket (openFile err WriteMode) hClose $ \errHandle ->
+        status <- bracket (IO.openFile err WriteMode) hClose $ \errHandle ->
             waitForProcess =<< if useBuildscript
                                then compileScript bin cfgdir buildscript errHandle
                                else compileGHC bin cfgdir errHandle
@@ -650,7 +673,7 @@ recompile force = io $ do
 
         -- now, if it fails, run xmessage to let the user know:
         if status == ExitSuccess
-            then trace "XMonad recompilation process exited with success!"
+            then XMonad.Core.trace "XMonad recompilation process exited with success!"
             else do
                 ghcErr <- readFile err
                 let msg = unlines $
@@ -659,17 +682,17 @@ recompile force = io $ do
                         ++ ["","Please check the file for errors."]
                 -- nb, the ordering of printing, then forking, is crucial due to
                 -- lazy evaluation
-                hPutStrLn stderr msg
+                IO.hPutStrLn stderr msg
                 forkProcess $ executeFile "xmessage" True ["-default", "okay", replaceUnicode msg] Nothing
                 return ()
         return (status == ExitSuccess)
       else return True
- where getModTime f = E.catch (Just <$> getModificationTime f) (\(SomeException _) -> return Nothing)
+ where getModTime f = catch (Just <$> getModificationTime f) (\(SomeException _) -> return Nothing)
        isSource = flip elem [".hs",".lhs",".hsc"] . takeExtension
-       isExecutable f = E.catch (executable <$> getPermissions f) (\(SomeException _) -> return False)
+       isExecutable f = catch (executable <$> getPermissions f) (\(SomeException _) -> return False)
        allFiles t = do
             let prep = map (t</>) . Prelude.filter (`notElem` [".",".."])
-            cs <- prep <$> E.catch (getDirectoryContents t) (\(SomeException _) -> return [])
+            cs <- prep <$> catch (getDirectoryContents t) (\(SomeException _) -> return [])
             ds <- filterM doesDirectoryExist cs
             concat . ((cs \\ ds):) <$> mapM allFiles ds
        -- Replace some of the unicode symbols GHC uses in its output
@@ -702,7 +725,7 @@ whenX a f = a >>= \b -> when b f
 -- | A 'trace' for the 'X' monad. Logs a string to stderr. The result may
 -- be found in your .xsession-errors file
 trace :: MonadIO m => String -> m ()
-trace = io . hPutStrLn stderr
+trace = io . IO.hPutStrLn stderr
 
 -- | Ignore SIGPIPE to avoid termination when a pipe is full, and SIGCHLD to
 -- avoid zombie processes, and clean up any extant zombie processes.

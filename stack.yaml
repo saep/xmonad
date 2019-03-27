@@ -1,7 +1,24 @@
-resolver: lts-7.19
-
+flags: {}
 packages:
-  - ./
+- '.'
+resolver: nightly-2019-03-27
+extra-deps: []
 
-extra-deps:
-  - X11-1.8
+allow-newer: true
+
+nix:
+  # Not using pure here because it is very practical to inherit
+  # $NVIM_LISTEN_ADDRESS when developing and debugging plugins.
+  pure: false
+
+  packages:
+  - zlib
+  - pkgconfig
+  - ncurses6
+  - xorg.libX11
+  - xorg.libXext
+  - xorg.libXft
+  - xorg.libXinerama
+  - xorg.libXrandr
+  - xorg.libXScrnSaver
+

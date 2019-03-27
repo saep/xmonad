@@ -80,7 +80,10 @@ library
                  , extensible-exceptions
                  , filepath
                  , mtl
+                 , pretty-simple
                  , process
+                 , rio
+                 , unliftio
                  , setlocale
                  , unix
                  , utf8-string           >= 0.3 && < 1.1
