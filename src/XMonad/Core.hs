@@ -614,7 +614,7 @@ stateFileName = (</> "xmonad.state") <$> getXMonadDataDir
 -- 'False' is returned if there are compilation errors.
 --
 recompile :: MonadIO m => Bool -> m Bool
-recompile force = io $ do
+recompile force' = io $ do
     cfgdir  <- getXMonadDir
     datadir <- getXMonadDataDir
     let binn = "xmonad-"++arch++"-"++os
@@ -649,7 +649,7 @@ recompile force = io $ do
           return False
 
     shouldRecompile <-
-      if useBuildscript || force
+      if useBuildscript || force'
         then return True
         else if any (binT <) (srcT : libTs)
           then do
