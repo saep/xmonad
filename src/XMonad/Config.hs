@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-orphans #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, NoImplicitPrelude #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  XMonad.Config
@@ -43,8 +43,9 @@ import Data.Default
 import Data.Monoid
 import qualified Data.Map as M
 import System.Exit
-import Graphics.X11.Xlib
-import Graphics.X11.Xlib.Extras
+import Graphics.X11.Xlib as X
+import Graphics.X11.Xlib.Extras as X
+import RIO
 
 -- | The default number of workspaces (virtual screens) and their names.
 -- By default we use numeric strings, but any string may be used as a
