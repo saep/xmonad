@@ -1,3 +1,4 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE PatternGuards #-}
 
 -----------------------------------------------------------------------------
@@ -51,11 +52,12 @@ module XMonad.StackSet (
         abort
     ) where
 
-import Prelude hiding (filter)
-import Data.Maybe   (listToMaybe,isJust,fromMaybe)
-import qualified Data.List as L (deleteBy,find,splitAt,filter,nub)
-import Data.List ( (\\) )
-import qualified Data.Map  as M (Map,insert,delete,empty)
+import Prelude (until)
+import RIO hiding (view, filter)
+import Data.Maybe (listToMaybe,isJust,fromMaybe)
+import qualified Data.List as List
+import RIO.List ( (\\) )
+import qualified RIO.Map as Map 
 
 -- $intro
 --
@@ -135,7 +137,7 @@ data StackSet i l a sid sd =
     StackSet { current  :: !(Screen i l a sid sd)    -- ^ currently focused workspace
              , visible  :: [Screen i l a sid sd]     -- ^ non-focused workspaces, visible in xinerama
              , hidden   :: [Workspace i l a]         -- ^ workspaces not visible anywhere
-             , floating :: M.Map a RationalRect      -- ^ floating windows
+             , floating :: Map a RationalRect      -- ^ floating windows
              } deriving (Show, Read, Eq)
 
 -- | Visible workspaces, and their Xinerama screens.
@@ -195,9 +197,9 @@ abort x = error $ "xmonad: StackSet: " ++ x
 --
 new :: (Integral s) => l -> [i] -> [sd] -> StackSet i l a s sd
 new l wids m | not (null wids) && length m <= length wids && not (null m)
-  = StackSet cur visi unseen M.empty
-  where (seen,unseen) = L.splitAt (length m) $ map (\i -> Workspace i l Nothing) wids
-        (cur:visi)    = [ Screen i s sd |  (i, s, sd) <- zip3 seen [0..] m ]
+  = StackSet cur visi unseen Map.empty
+  where (seen,unseen) = List.splitAt (length m) $ map (\i -> Workspace i l Nothing) wids
+        (cur:visi)    = [ Screen i s sd |  (i, s, sd) <- List.zip3 seen [0..] m ]
                 -- now zip up visibles with their screen id
 new _ _ _ = abort "non-positive argument to StackSet.new"
 
@@ -213,14 +215,14 @@ view :: (Eq s, Eq i) => i -> StackSet i l a s sd -> StackSet i l a s sd
 view i s
     | i == currentTag s = s  -- current
 
-    | Just x <- L.find ((i==).tag.workspace) (visible s)
+    | Just x <- List.find ((i==).tag.workspace) (visible s)
     -- if it is visible, it is just raised
-    = s { current = x, visible = current s : L.deleteBy (equating screen) x (visible s) }
+    = s { current = x, visible = current s : List.deleteBy (equating screen) x (visible s) }
 
-    | Just x <- L.find ((i==).tag)           (hidden  s) -- must be hidden then
+    | Just x <- List.find ((i==).tag)           (hidden  s) -- must be hidden then
     -- if it was hidden, it is raised on the xine screen currently used
     = s { current = (current s) { workspace = x }
-        , hidden = workspace (current s) : L.deleteBy (equating tag) x (hidden s) }
+        , hidden = workspace (current s) : List.deleteBy (equating tag) x (hidden s) }
 
     | otherwise = s -- not a member of the stackset
 
@@ -242,10 +244,10 @@ view i s
 greedyView :: (Eq s, Eq i) => i -> StackSet i l a s sd -> StackSet i l a s sd
 greedyView w ws
      | any wTag (hidden ws) = view w ws
-     | (Just s) <- L.find (wTag . workspace) (visible ws)
+     | (Just s) <- List.find (wTag . workspace) (visible ws)
                             = ws { current = (current ws) { workspace = workspace s }
                                  , visible = s { workspace = workspace (current ws) }
-                                           : L.filter (not . wTag . workspace) (visible ws) }
+                                           : List.filter (not . wTag . workspace) (visible ws) }
      | otherwise = ws
    where wTag = (w == ) . tag
 
@@ -314,9 +316,9 @@ differentiate (x:xs) = Just $ Stack x [] xs
 -- 'True'.  Order is preserved, and focus moves as described for 'delete'.
 --
 filter :: (a -> Bool) -> Stack a -> Maybe (Stack a)
-filter p (Stack f ls rs) = case L.filter p (f:rs) of
-    f':rs' -> Just $ Stack f' (L.filter p ls) rs'    -- maybe move focus down
-    []     -> case L.filter p ls of                  -- filter back up
+filter p (Stack f ls rs) = case List.filter p (f:rs) of
+    f':rs' -> Just $ Stack f' (List.filter p ls) rs'    -- maybe move focus down
+    []     -> case List.filter p ls of                  -- filter back up
                     f':ls' -> Just $ Stack f' ls' [] -- else up
                     []     -> Nothing
 
@@ -383,7 +385,7 @@ workspaces s = workspace (current s) : map workspace (visible s) ++ hidden s
 
 -- | Get a list of all windows in the 'StackSet' in no particular order
 allWindows :: Eq a => StackSet i l a s sd -> [a]
-allWindows = L.nub . concatMap (integrate' . stack) . workspaces
+allWindows = List.nub . concatMap (integrate' . stack) . workspaces
 
 -- | Get the tag of the currently focused workspace.
 currentTag :: StackSet i l a s sd -> i
@@ -494,11 +496,11 @@ delete' w s = s { current = removeFromScreen        (current s)
 -- | Given a window, and its preferred rectangle, set it as floating
 -- A floating window should already be managed by the 'StackSet'.
 float :: Ord a => a -> RationalRect -> StackSet i l a s sd -> StackSet i l a s sd
-float w r s = s { floating = M.insert w r (floating s) }
+float w r s = s { floating = Map.insert w r (floating s) }
 
 -- | Clear the floating status of a window
 sink :: Ord a => a -> StackSet i l a s sd -> StackSet i l a s sd
-sink w s = s { floating = M.delete w (floating s) }
+sink w s = s { floating = Map.delete w (floating s) }
 
 ------------------------------------------------------------------------
 -- $settingMW
