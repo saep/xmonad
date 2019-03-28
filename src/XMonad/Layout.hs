@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, PatternGuards, TypeSynonymInstances, DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, PatternGuards, TypeSynonymInstances, DeriveDataTypeable, NoImplicitPrelude #-}
 
 -- --------------------------------------------------------------------------
 -- |
@@ -31,6 +31,7 @@ import qualified XMonad.StackSet as W
 import Control.Arrow ((***), second)
 import Control.Monad
 import Data.Maybe (fromMaybe)
+import RIO hiding (handle)
 
 ------------------------------------------------------------------------
 
