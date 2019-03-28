@@ -55,7 +55,6 @@ import Graphics.X11.Xlib.Extras (getWindowAttributes, WindowAttributes, Event)
 import Data.Typeable
 import Data.List ((\\))
 import Data.Maybe (isJust,fromMaybe)
-import System.Environment (lookupEnv)
 
 import qualified RIO.Map as M
 import qualified RIO.Set as S
@@ -450,12 +449,12 @@ spawnPID x = xfork $ executeFile "/bin/sh" False ["-c", x] Nothing
 xfork :: MonadIO m => IO () -> m ProcessID
 xfork x = io . forkProcess . finally nullStdin $ do
                 uninstallSignalHandlers
-                createSession
+                void createSession
                 x
  where
     nullStdin = do
         fd <- openFd "/dev/null" ReadOnly Nothing defaultFileFlags
-        dupTo fd stdInput
+        void $ dupTo fd stdInput
         closeFd fd
 
 -- | This is basically a map function, running a function in the 'X' monad on
@@ -477,7 +476,7 @@ runOnWorkspaces job = do
 -- The @XDG_CONFIG_HOME/xmonad@ directory.
 --
 getXMonadDir :: MonadIO m => m String
-getXMonadDir = getXDGDirectory XDGConfig "xmonad"
+getXMonadDir = io $ getXdgDirectory XdgConfig "xmonad"
 
 -- | Return the path to the xmonad cache directory.  This directory is
 -- used to store temporary files that can easily be recreated.  For
@@ -485,7 +484,7 @@ getXMonadDir = getXDGDirectory XDGConfig "xmonad"
 --
 -- The @XDG_CACHE_HOME/xmonad@ directory.
 getXMonadCacheDir :: MonadIO m => m String
-getXMonadCacheDir = getXDGDirectory XDGCache "xmonad"
+getXMonadCacheDir = io $ getXdgDirectory XdgCache "xmonad"
 
 -- | Return the path to the xmonad data directory.  This directory is
 -- used by XMonad to store data files such as the run-time state file
@@ -493,30 +492,8 @@ getXMonadCacheDir = getXDGDirectory XDGCache "xmonad"
 --
 -- The @XDG_DATA_HOME/xmonad@ directory.
 getXMonadDataDir :: MonadIO m => m String
-getXMonadDataDir = io $ getXDGDirectory XDGData "xmonad"
+getXMonadDataDir = io $ getXdgDirectory XdgData "xmonad"
 
-
--- | Helper function to retrieve the various XDG directories.
--- This has been based on the implementation shipped with GHC version 8.0.1 or
--- higher. Put here to preserve compatibility with older GHC versions.
-getXDGDirectory :: MonadIO io => XDGDirectory -> FilePath -> io FilePath
-getXDGDirectory xdgDir suffix =
-    normalise . (</> suffix) <$>
-  case xdgDir of
-    XDGData   -> getDir "XDG_DATA_HOME"   ".local/share"
-    XDGConfig -> getDir "XDG_CONFIG_HOME" ".config"
-    XDGCache  -> getDir "XDG_CACHE_HOME"  ".cache"
-  where
-    getDir name fallback = do
-      envName <- io $ lookupEnv name
-      case envName of
-        Nothing -> fallback'
-        Just path
-          | isRelative path -> fallback'
-          | otherwise -> return path
-      where
-        fallback' = (</> fallback) <$> io getHomeDirectory
-data XDGDirectory = XDGData | XDGConfig | XDGCache
 
 -- | Get the name of the file used to store the xmonad window state.
 stateFileName :: (Functor m, MonadIO m) => m FilePath
@@ -611,7 +588,8 @@ recompile force' = io $ do
                 -- nb, the ordering of printing, then forking, is crucial due to
                 -- lazy evaluation
                 IO.hPutStrLn stderr msg
-                forkProcess $ executeFile "xmessage" True ["-default", "okay", replaceUnicode msg] Nothing
+                void . forkProcess $
+                  executeFile "xmessage" True ["-default", "okay", replaceUnicode msg] Nothing
                 return ()
         return (status == ExitSuccess)
       else return True
@@ -648,7 +626,7 @@ whenJust mg f = maybe (return ()) f mg
 
 -- | Conditionally run an action, using a 'X' event to decide
 whenX :: X Bool -> X () -> X ()
-whenX a f = a >>= \b -> when b f
+whenX a f = whenM a f
 
 -- | A 'trace' for the 'X' monad. Logs a string to stderr. The result may
 -- be found in your .xsession-errors file
@@ -659,16 +637,13 @@ trace = io . IO.hPutStrLn stderr
 -- avoid zombie processes, and clean up any extant zombie processes.
 installSignalHandlers :: MonadIO m => m ()
 installSignalHandlers = io $ do
-    installHandler openEndedPipe Ignore Nothing
-    installHandler sigCHLD Ignore Nothing
-    (try :: IO a -> IO (Either SomeException a))
-      $ fix $ \more -> do
+    void $ installHandler openEndedPipe Ignore Nothing
+    void $ installHandler sigCHLD Ignore Nothing
+    void $ tryAny $ fix $ \more -> do
         x <- getAnyProcessStatus False False
         when (isJust x) more
-    return ()
 
 uninstallSignalHandlers :: MonadIO m => m ()
 uninstallSignalHandlers = io $ do
-    installHandler openEndedPipe Default Nothing
-    installHandler sigCHLD Default Nothing
-    return ()
+    void $ installHandler openEndedPipe Default Nothing
+    void $ installHandler sigCHLD Default Nothing

@@ -29,7 +29,6 @@ import qualified RIO.Map as M
 import qualified RIO.Set as S
 import qualified RIO.List as List
 
-import Control.Applicative((<$>), (<*>))
 import Control.Arrow (second)
 import Control.Monad (void)
 import Control.Monad.Reader
