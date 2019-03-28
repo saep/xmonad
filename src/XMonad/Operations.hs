@@ -527,20 +527,6 @@ readStateFile xmc = do
     readStrict :: Handle -> IO String
     readStrict h = IO.hGetContents h >>= \s -> length s `seq` return s
 
--- | Migrate state from a previously running xmonad instance that used
--- the older @--resume@ technique.
-{-# DEPRECATED migrateState "will be removed some point in the future." #-}
-migrateState :: (Functor m, MonadUnliftIO m, MonadIO m) => String -> String -> m ()
-migrateState ws xs = do
-    io (IO.putStrLn "WARNING: --resume is no longer supported.")
-    whenJust stateData $ \s -> do
-      path <- stateFileName
-      XMonad.Core.catchIO (IO.writeFile path $ show s)
-  where
-    stateData = StateFile <$> maybeRead ws <*> maybeRead xs
-    maybeRead s = case Prelude.reads s of
-                    [(x, "")] -> Just x
-                    _         -> Nothing
 
 -- | @restart name resume@. Attempt to restart xmonad by executing the program
 -- @name@.  If @resume@ is 'True', restart with the current window state.
