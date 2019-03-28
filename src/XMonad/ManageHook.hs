@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -20,14 +21,14 @@ module XMonad.ManageHook where
 
 import XMonad.Core
 import Graphics.X11.Xlib.Extras
-import Graphics.X11.Xlib (Display, Window, internAtom, wM_NAME)
-import Control.Exception.Extensible (bracket, SomeException(..))
-import qualified Control.Exception.Extensible as E
-import Control.Monad.Reader
+import qualified Graphics.X11.Xlib as X (Display, Window, internAtom, wM_NAME)
 import Data.Maybe
 import Data.Monoid
 import qualified XMonad.StackSet as W
 import XMonad.Operations (floatLocation, reveal)
+import RIO
+import qualified RIO.List as List
+import Prelude (toEnum)
 
 -- | Lift an 'X' action to a 'Query'.
 liftX :: X a -> Query a
@@ -70,14 +71,14 @@ infixr 3 <&&>, <||>
 -- | Return the window title.
 title :: Query String
 title = ask >>= \w -> liftX $ do
-    d <- asks display
+    d <- asks XMonad.Core.display
     let
         getProp =
-            (internAtom d "_NET_WM_NAME" False >>= getTextProperty d w)
-                `E.catch` \(SomeException _) -> getTextProperty d w wM_NAME
+            (X.internAtom d "_NET_WM_NAME" False >>= getTextProperty d w)
+                `catchAny` \_ -> getTextProperty d w X.wM_NAME
         extract prop = do l <- wcTextPropertyToTextList d prop
-                          return $ if null l then "" else head l
-    io $ bracket getProp (xFree . tp_value) extract `E.catch` \(SomeException _) -> return ""
+                          return $ maybe "" id $ List.headMaybe l
+    io $ bracket getProp (xFree . tp_value) extract `catchAny` \_ -> return ""
 
 -- | Return the application name.
 appName :: Query String
@@ -96,7 +97,7 @@ className = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap resClass $ io $ getC
 stringProperty :: String -> Query String
 stringProperty p = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap (fromMaybe "") $ getStringProperty d w p)
 
-getStringProperty :: Display -> Window -> String -> X (Maybe String)
+getStringProperty :: X.Display -> X.Window -> String -> X (Maybe String)
 getStringProperty d w p = do
   a  <- getAtom p
   md <- io $ getWindowProperty8 d a w
