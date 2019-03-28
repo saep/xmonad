@@ -20,7 +20,7 @@
 --
 ------------------------------------------------------------------------
 
-module XMonad.Config (defaultConfig, Default(..)) where
+module XMonad.Config (Default(..)) where
 
 --
 -- Useful imports
@@ -279,11 +279,6 @@ instance (a ~ Choose Tall (Choose (Mirror Tall) Full)) => Default (XConfig a) wh
                 [] -> return theConf
                 _ -> fail ("unrecognized flags:" ++ show xs)
     }
-
--- | The default set of configuration values itself
-{-# DEPRECATED defaultConfig "Use def (from Data.Default, and re-exported by XMonad and XMonad.Config) instead." #-}
-defaultConfig :: XConfig (Choose Tall (Choose (Mirror Tall) Full))
-defaultConfig = def
 
 -- | Finally, a copy of the default bindings in simple textual tabular format.
 help :: String
