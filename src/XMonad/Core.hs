@@ -207,19 +207,17 @@ runX c st (X action) = do
 -- | Run in the 'X' monad, and in case of exception, and catch it and log it
 -- to stderr, and run the error case.
 catchX :: X a -> X a -> X a
-catchX job errcase = do
-    st <- get
-    c <- ask
-    (a, s') <- io $ runX c st job `catch` \e -> case fromException e of
-                        Just x -> RIO.throwIO e `const` (x `asTypeOf` ExitSuccess)
-                        _ -> do IO.hPrint stderr e; runX c st errcase
-    put s'
-    return a
+catchX (X job) (X errcase) = X $ do
+    job `catch` \e -> case fromException e of
+      Just x -> throwIO e `const` (x `asTypeOf` ExitSuccess)
+      _      -> do
+        io $ IO.hPrint stderr e
+        errcase
 
 -- | Execute the argument, catching all exceptions.  Either this function or
 -- 'catchX' should be used at all callsites of user customized code.
 userCode :: X a -> X (Maybe a)
-userCode a = catchX (Just `liftM` a) (return Nothing)
+userCode a = (Just <$> a) `catchX` pure Nothing
 
 -- | Same as userCode but with a default argument to return instead of using
 -- Maybe, provided for convenience.
