@@ -37,8 +37,6 @@ import RIO hiding (Display, display, trace, catchIO)
 import XMonad.StackSet hiding (modify)
 
 import Prelude
-import Control.Applicative(Applicative, pure, (<$>), (<*>))
-import Control.Monad.Fail
 import Control.Monad.State
 import Data.Semigroup
 import Data.Default
@@ -145,12 +143,25 @@ data ScreenDetail   = SD { screenRect :: !Rectangle } deriving (Eq,Show, Read)
 -- with 'ask'. With newtype deriving we get readers and state monads
 -- instantiated on 'XConf' and 'XState' automatically.
 --
-newtype X a = X (ReaderT XConf (StateT XState IO) a)
-    deriving (Functor, Monad, MonadFail, MonadIO, MonadState XState, MonadReader XConf, Typeable)
+-- newtype X a = X (ReaderT XConf (StateT XState IO) a)
+--     deriving (Functor, Monad, MonadFail, MonadIO, MonadState XState, MonadReader XConf, Typeable)
+newtype X a = X (RIO XMonadEnv a)
+  deriving (Functor, Applicative, Monad, MonadIO)
 
-instance Applicative X where
-  pure = return
-  (<*>) = ap
+data XMonadEnv = Env
+  { xConf  :: XConf
+  , xState :: TVar XState
+  }
+
+instance MonadReader XConf X where
+  ask = X $ asks xConf
+  local f (X a) = X $ local (\e -> e{xConf = f (xConf e)}) a
+
+instance MonadState XState X where
+  get = X $ readTVarIO =<< asks xState
+  put newState = X $ do
+    st <- asks xState
+    atomically $ modifyTVar' st (const newState)
 
 instance Semigroup a => Semigroup (X a) where
     (<>) = liftM2 (<>)
@@ -182,7 +193,11 @@ instance Default a => Default (Query a) where
 -- | Run the 'X' monad, given a chunk of 'X' monad code, and an initial state
 -- Return the result, and final state
 runX :: XConf -> XState -> X a -> IO (a, XState)
-runX c st (X a) = runStateT (runReaderT a c) st
+runX c pureState (X action) = do
+  st <- newTVarIO pureState
+  a <- runRIO Env{xConf = c, xState = st} action
+  st' <- readTVarIO st
+  return (a, st')
 
 -- | Run in the 'X' monad, and in case of exception, and catch it and log it
 -- to stderr, and run the error case.
@@ -443,7 +458,7 @@ runOnWorkspaces :: (WindowSpace -> X WindowSpace) -> X ()
 runOnWorkspaces job = do
     ws <- gets windowset
     h <- mapM job $ hidden ws
-    c:v <- mapM (\s -> (\w -> s { workspace = w}) <$> job (workspace s))
+    ~(c:v) <- mapM (\s -> (\w -> s { workspace = w}) <$> job (workspace s))
              $ current ws : visible ws
     modify $ \s -> s { windowset = ws { current = c, visible = v, hidden = h } }
 
