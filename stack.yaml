@@ -1,7 +1,20 @@
-resolver: lts-7.19
-
+flags: {}
 packages:
-  - ./
+- '.'
+resolver: nightly-2019-04-18
+extra-deps: []
 
-extra-deps:
-  - X11-1.8
+allow-newer: true
+
+nix:
+  packages:
+  - zlib
+  - pkgconfig
+  - ncurses6
+  - xorg.libX11
+  - xorg.libXext
+  - xorg.libXft
+  - xorg.libXinerama
+  - xorg.libXrandr
+  - xorg.libXScrnSaver
+
