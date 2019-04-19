@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, NoImplicitPrelude #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -18,13 +18,13 @@
 
 module XMonad.ManageHook where
 
+import RIO hiding (Display, display)
+
+import Data.Char (chr)
 import XMonad.Core
 import Graphics.X11.Xlib.Extras
 import Graphics.X11.Xlib (Display, Window, internAtom, wM_NAME)
-import Control.Exception.Extensible (bracket, SomeException(..))
-import qualified Control.Exception.Extensible as E
-import Control.Monad.Reader
-import Data.Maybe
+import qualified RIO.List as List
 import Data.Monoid
 import qualified XMonad.StackSet as W
 import XMonad.Operations (floatLocation, reveal)
@@ -74,10 +74,11 @@ title = ask >>= \w -> liftX $ do
     let
         getProp =
             (internAtom d "_NET_WM_NAME" False >>= getTextProperty d w)
-                `E.catch` \(SomeException _) -> getTextProperty d w wM_NAME
+                `catch` \(SomeException _) -> getTextProperty d w wM_NAME
         extract prop = do l <- wcTextPropertyToTextList d prop
-                          return $ if null l then "" else head l
-    io $ bracket getProp (xFree . tp_value) extract `E.catch` \(SomeException _) -> return ""
+                          --return $ if null l then "" else head l
+                          return $ maybe "" id $ List.headMaybe l
+    io $ bracket getProp (xFree . tp_value) extract `catch` \(SomeException _) -> return ""
 
 -- | Return the application name.
 appName :: Query String
@@ -100,7 +101,8 @@ getStringProperty :: Display -> Window -> String -> X (Maybe String)
 getStringProperty d w p = do
   a  <- getAtom p
   md <- io $ getWindowProperty8 d a w
-  return $ fmap (map (toEnum . fromIntegral)) md
+  return $ fmap (map (chr . fromIntegral)) md
+  
 
 -- | Modify the 'WindowSet' with a pure function.
 doF :: (s -> s) -> Query (Endo s)

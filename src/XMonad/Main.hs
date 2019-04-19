@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses, NoImplicitPrelude, FlexibleContexts #-}
 ----------------------------------------------------------------------------
 -- |
 -- Module      :  XMonad.Main
@@ -15,14 +15,15 @@
 
 module XMonad.Main (xmonad, launch) where
 
+import RIO hiding (Display, display, handle, trace, catchIO, mask)
+
 import System.Locale.SetLocale
 import qualified Control.Exception.Extensible as E
 import Data.Bits
 import Data.List ((\\))
-import Data.Function
+import qualified RIO.List as List
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Control.Monad.Reader
 import Control.Monad.State
 import Data.Maybe (fromMaybe)
 import Data.Monoid (getAll)
@@ -36,7 +37,7 @@ import XMonad.StackSet (new, floating, member)
 import qualified XMonad.StackSet as W
 import XMonad.Operations
 
-import System.IO
+import System.IO (putStr, putStrLn)
 import System.Directory
 import System.Info
 import System.Environment
@@ -203,7 +204,8 @@ launch initxmc = do
     hSetBuffering stdout NoBuffering
 
     let layout = layoutHook xmc
-        initialWinset = let padToLen n xs = take (max n (length xs)) $ xs ++ repeat ""
+        initialWinset = let padToLen n xs = take (max n (length xs))
+                              $ xs ++ List.repeat ""
             in new layout (padToLen (length xinesc) (workspaces xmc)) $ map SD xinesc
 
         cf = XConf
@@ -323,7 +325,7 @@ handle (UnmapEvent {ev_window = w, ev_send_event = synthetic}) = whenX (isClient
         then unmanage w
         else modify (\s -> s { waitingUnmap = M.update mpred w (waitingUnmap s) })
  where mpred 1 = Nothing
-       mpred n = Just $ pred n
+       mpred n = Just (n-1)
 
 -- set keyboard mapping
 handle e@(MappingNotifyEvent {}) = do

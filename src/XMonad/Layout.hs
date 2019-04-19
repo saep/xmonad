@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, PatternGuards, TypeSynonymInstances, DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, NoImplicitPrelude,
+             PatternGuards, TypeSynonymInstances, DeriveDataTypeable #-}
 
 -- --------------------------------------------------------------------------
 -- |
@@ -24,12 +25,13 @@ module XMonad.Layout (
 
   ) where
 
+import RIO hiding (handle)
+
 import XMonad.Core
 
 import Graphics.X11 (Rectangle(..))
 import qualified XMonad.StackSet as W
 import Control.Arrow ((***), second)
-import Control.Monad
 import Data.Maybe (fromMaybe)
 
 ------------------------------------------------------------------------

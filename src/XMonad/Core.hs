@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification, FlexibleInstances, GeneralizedNewtypeDeriving,
-             MultiParamTypeClasses, TypeSynonymInstances, DeriveDataTypeable #-}
+             MultiParamTypeClasses, TypeSynonymInstances, DeriveDataTypeable,
+             LambdaCase, NoImplicitPrelude #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -31,20 +32,19 @@ module XMonad.Core (
     ManageHook, Query(..), runQuery
   ) where
 
+import RIO hiding (Display, display, trace, catchIO)
+
 import XMonad.StackSet hiding (modify)
 
 import Prelude
-import Control.Exception.Extensible (fromException, try, bracket, throw, finally, SomeException(..))
-import qualified Control.Exception.Extensible as E
 import Control.Applicative(Applicative, pure, (<$>), (<*>))
 import Control.Monad.Fail
 import Control.Monad.State
-import Control.Monad.Reader
 import Data.Semigroup
 import Data.Default
 import System.FilePath
-import System.IO
 import System.Info
+import System.IO (hPrint, hPutStrLn, openFile)
 import System.Posix.Env (getEnv)
 import System.Posix.Process (executeFile, forkProcess, getAnyProcessStatus, createSession)
 import System.Posix.Signals
@@ -52,13 +52,11 @@ import System.Posix.IO
 import System.Posix.Types (ProcessID)
 import System.Process
 import System.Directory
-import System.Exit
 import Graphics.X11.Xlib
 import Graphics.X11.Xlib.Extras (getWindowAttributes, WindowAttributes, Event)
 import Data.Typeable
 import Data.List ((\\))
 import Data.Maybe (isJust,fromMaybe)
-import Data.Monoid hiding ((<>))
 import System.Environment (lookupEnv)
 
 import qualified Data.Map as M
@@ -192,8 +190,8 @@ catchX :: X a -> X a -> X a
 catchX job errcase = do
     st <- get
     c <- ask
-    (a, s') <- io $ runX c st job `E.catch` \e -> case fromException e of
-                        Just x -> throw e `const` (x `asTypeOf` ExitSuccess)
+    (a, s') <- io $ runX c st job `catch` \e -> case fromException e of
+                        Just x -> throwIO e `const` (x `asTypeOf` ExitSuccess)
                         _ -> do hPrint stderr e; runX c st errcase
     put s'
     return a
@@ -414,7 +412,7 @@ io = liftIO
 -- | Lift an 'IO' action into the 'X' monad.  If the action results in an 'IO'
 -- exception, log the exception to stderr and continue normal execution.
 catchIO :: MonadIO m => IO () -> m ()
-catchIO f = io (f `E.catch` \(SomeException e) -> hPrint stderr e >> hFlush stderr)
+catchIO f = io (f `catch` \(SomeException e) -> hPrint stderr e >> hFlush stderr)
 
 -- | spawn. Launch an external application. Specifically, it double-forks and
 -- runs the 'String' you pass as a command to \/bin\/sh.
@@ -552,19 +550,18 @@ getXDGDirectory :: XDGDirectory -> FilePath -> IO FilePath
 getXDGDirectory xdgDir suffix =
   normalise . (</> suffix) <$>
   case xdgDir of
-    XDGData   -> get "XDG_DATA_HOME"   ".local/share"
-    XDGConfig -> get "XDG_CONFIG_HOME" ".config"
-    XDGCache  -> get "XDG_CACHE_HOME"  ".cache"
+    XDGData   -> getDir "XDG_DATA_HOME"   ".local/share"
+    XDGConfig -> getDir "XDG_CONFIG_HOME" ".config"
+    XDGCache  -> getDir "XDG_CACHE_HOME"  ".cache"
   where
-    get name fallback = do
-      env <- lookupEnv name
-      case env of
-        Nothing -> fallback'
-        Just path
-          | isRelative path -> fallback'
-          | otherwise -> return path
+    getDir name fallback = lookupEnv name >>= \case
+      Nothing -> fallback'
+      Just path
+        | isRelative path -> fallback'
+        | otherwise -> return path
       where
         fallback' = (</> fallback) <$> getHomeDirectory
+
 data XDGDirectory = XDGData | XDGConfig | XDGCache
 
 -- | Get the name of the file used to store the xmonad window state.
@@ -591,7 +588,7 @@ stateFileName = (</> "xmonad.state") <$> getXMonadDataDir
 -- 'False' is returned if there are compilation errors.
 --
 recompile :: MonadIO m => Bool -> m Bool
-recompile force = io $ do
+recompile forceRecompilation = io $ do
     cfgdir  <- getXMonadDir
     datadir <- getXMonadDataDir
     let binn = "xmonad-"++arch++"-"++os
@@ -626,7 +623,7 @@ recompile force = io $ do
           return False
 
     shouldRecompile <-
-      if useBuildscript || force
+      if useBuildscript || forceRecompilation
         then return True
         else if any (binT <) (srcT : libTs)
           then do
@@ -664,12 +661,12 @@ recompile force = io $ do
                 return ()
         return (status == ExitSuccess)
       else return True
- where getModTime f = E.catch (Just <$> getModificationTime f) (\(SomeException _) -> return Nothing)
+ where getModTime f = catch (Just <$> getModificationTime f) (\(SomeException _) -> return Nothing)
        isSource = flip elem [".hs",".lhs",".hsc"] . takeExtension
-       isExecutable f = E.catch (executable <$> getPermissions f) (\(SomeException _) -> return False)
+       isExecutable f = catch (executable <$> getPermissions f) (\(SomeException _) -> return False)
        allFiles t = do
             let prep = map (t</>) . Prelude.filter (`notElem` [".",".."])
-            cs <- prep <$> E.catch (getDirectoryContents t) (\(SomeException _) -> return [])
+            cs <- prep <$> catch (getDirectoryContents t) (\(SomeException _) -> return [])
             ds <- filterM doesDirectoryExist cs
             concat . ((cs \\ ds):) <$> mapM allFiles ds
        -- Replace some of the unicode symbols GHC uses in its output

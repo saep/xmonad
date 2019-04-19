@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE NoImplicitPrelude, PatternGuards #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -51,8 +51,11 @@ module XMonad.StackSet (
         abort
     ) where
 
-import Prelude hiding (filter)
-import Data.Maybe   (listToMaybe,isJust,fromMaybe)
+import RIO hiding (view, filter)
+import Prelude (until)
+
+import qualified RIO.List as List
+--import Data.Maybe   (listToMaybe,isJust,fromMaybe)
 import qualified Data.List as L (deleteBy,find,splitAt,filter,nub)
 import Data.List ( (\\) )
 import qualified Data.Map  as M (Map,insert,delete,empty)
@@ -197,7 +200,7 @@ new :: (Integral s) => l -> [i] -> [sd] -> StackSet i l a s sd
 new l wids m | not (null wids) && length m <= length wids && not (null m)
   = StackSet cur visi unseen M.empty
   where (seen,unseen) = L.splitAt (length m) $ map (\i -> Workspace i l Nothing) wids
-        (cur:visi)    = [ Screen i s sd |  (i, s, sd) <- zip3 seen [0..] m ]
+        (cur:visi)    = [ Screen i s sd |  (i, s, sd) <- List.zip3 seen [0..] m ]
                 -- now zip up visibles with their screen id
 new _ _ _ = abort "non-positive argument to StackSet.new"
 

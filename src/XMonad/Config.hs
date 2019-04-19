@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-orphans #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NoImplicitPrelude, TypeFamilies #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  XMonad.Config
@@ -22,6 +22,7 @@
 
 module XMonad.Config (defaultConfig, Default(..)) where
 
+import RIO 
 --
 -- Useful imports
 --

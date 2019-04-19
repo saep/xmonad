@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, PatternGuards, TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses,
+             NoImplicitPrelude, PatternGuards, TypeSynonymInstances #-}
 -- --------------------------------------------------------------------------
 -- |
 -- Module      :  XMonad.Operations
@@ -16,13 +17,14 @@
 
 module XMonad.Operations where
 
+import RIO hiding (Display, display, catchIO, mask)
+
 import XMonad.Core
 import XMonad.Layout (Full(..))
 import qualified XMonad.StackSet as W
 
-import Data.Maybe
 import Data.Monoid          (Endo(..),Any(..))
-import Data.List            (nub, (\\), find)
+import qualified RIO.List as List
 import Data.Bits            ((.|.), (.&.), complement, testBit)
 import Data.Ratio
 import qualified Data.Map as M
@@ -31,13 +33,13 @@ import qualified Data.Set as S
 import Control.Applicative((<$>), (<*>))
 import Control.Arrow (second)
 import Control.Monad (void)
-import Control.Monad.Reader
 import Control.Monad.State
 import qualified Control.Exception.Extensible as C
 
-import System.IO
 import System.Directory
+import System.IO (hGetContents, hPrint, putStrLn, writeFile)
 import System.Posix.Process (executeFile)
+import Text.Read (reads)
 import Graphics.X11.Xlib
 import Graphics.X11.Xinerama (getScreenInfo)
 import Graphics.X11.Xlib.Extras
@@ -108,7 +110,7 @@ windows :: (WindowSet -> WindowSet) -> X ()
 windows f = do
     XState { windowset = old } <- get
     let oldvisible = concatMap (W.integrate' . W.stack . W.workspace) $ W.current old : W.visible old
-        newwindows = W.allWindows ws \\ W.allWindows old
+        newwindows = W.allWindows ws List.\\ W.allWindows old
         ws = f old
     XConf { display = d , normalBorder = nbc, focusedBorder = fbc } <- ask
 
@@ -127,7 +129,7 @@ windows f = do
 
     -- for each workspace, layout the currently visible workspaces
     let allscreens     = W.screens ws
-        summed_visible = scanl (++) [] $ map (W.integrate' . W.stack . W.workspace) allscreens
+        summed_visible = List.scanl (++) [] $ map (W.integrate' . W.stack . W.workspace) allscreens
     rects <- fmap concat $ forM (zip allscreens summed_visible) $ \ (w, vis) -> do
         let wsp   = W.workspace w
             this  = W.view n ws
@@ -166,12 +168,12 @@ windows f = do
 
     -- hide every window that was potentially visible before, but is not
     -- given a position by a layout now.
-    mapM_ hide (nub (oldvisible ++ newwindows) \\ visible)
+    mapM_ hide (List.nub (oldvisible ++ newwindows) List.\\ visible)
 
     -- all windows that are no longer in the windowset are marked as
     -- withdrawn, it is important to do this after the above, otherwise 'hide'
     -- will overwrite withdrawnState with iconicState
-    mapM_ (flip setWMState withdrawnState) (W.allWindows old \\ W.allWindows ws)
+    mapM_ (flip setWMState withdrawnState) (W.allWindows old List.\\ W.allWindows ws)
 
     isMouseFocused <- asks mouseFocused
     unless isMouseFocused $ clearEvents enterWindowMask
@@ -296,7 +298,7 @@ containedIn r1@(Rectangle x1 y1 w1 h1) r2@(Rectangle x2 y2 w2 h2)
 -- | Given a list of screens, remove all duplicated screens and screens that
 -- are entirely contained within another.
 nubScreens :: [Rectangle] -> [Rectangle]
-nubScreens xs = nub . filter (\x -> not $ any (x `containedIn`) xs) $ xs
+nubScreens xs = List.nub . filter (\x -> not $ any (x `containedIn`) xs) $ xs
 
 -- | Cleans the list of screens according to the rules documented for
 -- nubScreens.
@@ -310,8 +312,8 @@ rescreen = do
     xinesc <- withDisplay getCleanedScreenInfo
 
     windows $ \ws@(W.StackSet { W.current = v, W.visible = vs, W.hidden = hs }) ->
-        let (xs, ys) = splitAt (length xinesc) $ map W.workspace (v:vs) ++ hs
-            (a:as)   = zipWith3 W.Screen xs [0..] $ map SD xinesc
+        let (xs, ys) = List.splitAt (length xinesc) $ map W.workspace (v:vs) ++ hs
+            (a:as)   = List.zipWith3 W.Screen xs [0..] $ map SD xinesc
         in  ws { W.current = a
                , W.visible = as
                , W.hidden  = ys }
@@ -578,7 +580,7 @@ floatLocation w =
 -- | Given a point, determine the screen (if any) that contains it.
 pointScreen :: Position -> Position
             -> X (Maybe (W.Screen WorkspaceId (Layout Window) Window ScreenId ScreenDetail))
-pointScreen x y = withWindowSet $ return . find p . W.screens
+pointScreen x y = withWindowSet $ return . List.find p . W.screens
   where p = pointWithin x y . screenRect . W.screenDetail
 
 -- | @pointWithin x y r@ returns 'True' if the @(x, y)@ co-ordinate is within
