@@ -53,8 +53,8 @@ import System.Posix.Types (ProcessID)
 import System.Process
 import System.Directory
 import System.Exit
-import Graphics.X11.Xlib
-import Graphics.X11.Xlib.Extras (getWindowAttributes, WindowAttributes, Event)
+import qualified Graphics.X11.Xlib as Xlib
+import qualified Graphics.X11.Xlib.Extras as Xlib (getWindowAttributes, WindowAttributes, Event)
 import Data.Typeable
 import Data.List ((\\))
 import Data.Maybe (isJust,fromMaybe)
@@ -67,10 +67,10 @@ import qualified Data.Set as S
 -- | XState, the (mutable) window manager state.
 data XState = XState
     { windowset        :: !WindowSet                     -- ^ workspace list
-    , mapped           :: !(S.Set Window)                -- ^ the Set of mapped windows
-    , waitingUnmap     :: !(M.Map Window Int)            -- ^ the number of expected UnmapEvents
-    , dragging         :: !(Maybe (Position -> Position -> X (), X ()))
-    , numberlockMask   :: !KeyMask                       -- ^ The numlock modifier
+    , mapped           :: !(S.Set Xlib.Window)                -- ^ the Set of mapped windows
+    , waitingUnmap     :: !(M.Map Xlib.Window Int)            -- ^ the number of expected UnmapEvents
+    , dragging         :: !(Maybe (Xlib.Position -> Xlib.Position -> X (), X ()))
+    , numberlockMask   :: !Xlib.KeyMask                       -- ^ The numlock modifier
     , extensibleState  :: !(M.Map String (Either String StateExtension))
     -- ^ stores custom state information.
     --
@@ -80,20 +80,20 @@ data XState = XState
 
 -- | XConf, the (read-only) window manager configuration.
 data XConf = XConf
-    { display       :: Display        -- ^ the X11 display
+    { display       :: Xlib.Display        -- ^ the X11 display
     , config        :: !(XConfig Layout)       -- ^ initial user configuration
-    , theRoot       :: !Window        -- ^ the root window
-    , normalBorder  :: !Pixel         -- ^ border color of unfocused windows
-    , focusedBorder :: !Pixel         -- ^ border color of the focused window
-    , keyActions    :: !(M.Map (KeyMask, KeySym) (X ()))
+    , theRoot       :: !Xlib.Window        -- ^ the root window
+    , normalBorder  :: !Xlib.Pixel         -- ^ border color of unfocused windows
+    , focusedBorder :: !Xlib.Pixel         -- ^ border color of the focused window
+    , keyActions    :: !(M.Map (Xlib.KeyMask, Xlib.KeySym) (X ()))
                                       -- ^ a mapping of key presses to actions
-    , buttonActions :: !(M.Map (KeyMask, Button) (Window -> X ()))
+    , buttonActions :: !(M.Map (Xlib.KeyMask, Xlib.Button) (Xlib.Window -> X ()))
                                       -- ^ a mapping of button presses to actions
     , mouseFocused :: !Bool           -- ^ was refocus caused by mouse action?
-    , mousePosition :: !(Maybe (Position, Position))
+    , mousePosition :: !(Maybe (Xlib.Position, Xlib.Position))
                                       -- ^ position of the mouse according to
                                       -- the event currently being processed
-    , currentEvent :: !(Maybe Event)
+    , currentEvent :: !(Maybe Xlib.Event)
                                       -- ^ event currently being processed
     }
 
@@ -102,31 +102,31 @@ data XConfig l = XConfig
     { normalBorderColor  :: !String              -- ^ Non focused windows border color. Default: \"#dddddd\"
     , focusedBorderColor :: !String              -- ^ Focused windows border color. Default: \"#ff0000\"
     , terminal           :: !String              -- ^ The preferred terminal application. Default: \"xterm\"
-    , layoutHook         :: !(l Window)          -- ^ The available layouts
+    , layoutHook         :: !(l Xlib.Window)          -- ^ The available layouts
     , manageHook         :: !ManageHook          -- ^ The action to run when a new window is opened
-    , handleEventHook    :: !(Event -> X All)    -- ^ Handle an X event, returns (All True) if the default handler
+    , handleEventHook    :: !(Xlib.Event -> X All)    -- ^ Handle an X event, returns (All True) if the default handler
                                                  -- should also be run afterwards. mappend should be used for combining
                                                  -- event hooks in most cases.
     , workspaces         :: ![String]            -- ^ The list of workspaces' names
-    , modMask            :: !KeyMask             -- ^ the mod modifier
-    , keys               :: !(XConfig Layout -> M.Map (ButtonMask,KeySym) (X ()))
+    , modMask            :: !Xlib.KeyMask             -- ^ the mod modifier
+    , keys               :: !(XConfig Layout -> M.Map (Xlib.ButtonMask,Xlib.KeySym) (X ()))
                                                  -- ^ The key binding: a map from key presses and actions
-    , mouseBindings      :: !(XConfig Layout -> M.Map (ButtonMask, Button) (Window -> X ()))
+    , mouseBindings      :: !(XConfig Layout -> M.Map (Xlib.ButtonMask, Xlib.Button) (Xlib.Window -> X ()))
                                                  -- ^ The mouse bindings
-    , borderWidth        :: !Dimension           -- ^ The border width
+    , borderWidth        :: !Xlib.Dimension           -- ^ The border width
     , logHook            :: !(X ())              -- ^ The action to perform when the windows set is changed
     , startupHook        :: !(X ())              -- ^ The action to perform on startup
     , focusFollowsMouse  :: !Bool                -- ^ Whether window entry events can change focus
     , clickJustFocuses   :: !Bool                -- ^ False to make a click which changes focus to be additionally passed to the window
-    , clientMask         :: !EventMask           -- ^ The client events that xmonad is interested in
-    , rootMask           :: !EventMask           -- ^ The root events that xmonad is interested in
+    , clientMask         :: !Xlib.EventMask           -- ^ The client events that xmonad is interested in
+    , rootMask           :: !Xlib.EventMask           -- ^ The root events that xmonad is interested in
     , handleExtraArgs    :: !([String] -> XConfig Layout -> IO (XConfig Layout))
                                                  -- ^ Modify the configuration, complain about extra arguments etc. with arguments that are not handled by default
     }
 
 
-type WindowSet   = StackSet  WorkspaceId (Layout Window) Window ScreenId ScreenDetail
-type WindowSpace = Workspace WorkspaceId (Layout Window) Window
+type WindowSet   = StackSet  WorkspaceId (Layout Xlib.Window) Xlib.Window ScreenId ScreenDetail
+type WindowSpace = Workspace WorkspaceId (Layout Xlib.Window) Xlib.Window
 
 -- | Virtual workspace indices
 type WorkspaceId = String
@@ -135,7 +135,7 @@ type WorkspaceId = String
 newtype ScreenId    = S Int deriving (Eq,Ord,Show,Read,Enum,Num,Integral,Real)
 
 -- | The 'Rectangle' with screen dimensions
-data ScreenDetail   = SD { screenRect :: !Rectangle } deriving (Eq,Show, Read)
+data ScreenDetail   = SD { screenRect :: !Xlib.Rectangle } deriving (Eq,Show, Read)
 
 ------------------------------------------------------------------------
 
@@ -165,10 +165,10 @@ instance Default a => Default (X a) where
     def = return def
 
 type ManageHook = Query (Endo WindowSet)
-newtype Query a = Query (ReaderT Window X a)
-    deriving (Functor, Applicative, Monad, MonadReader Window, MonadIO)
+newtype Query a = Query (ReaderT Xlib.Window X a)
+    deriving (Functor, Applicative, Monad, MonadReader Xlib.Window, MonadIO)
 
-runQuery :: Query a -> Window -> X a
+runQuery :: Query a -> Xlib.Window -> X a
 runQuery (Query m) w = runReaderT m w
 
 instance Semigroup a => Semigroup (Query a) where
@@ -212,7 +212,7 @@ userCodeDef defValue a = fromMaybe defValue `liftM` userCode a
 -- Convenient wrappers to state
 
 -- | Run a monad action with the current display settings
-withDisplay :: (Display -> X a) -> X a
+withDisplay :: (Xlib.Display -> X a) -> X a
 withDisplay   f = asks display >>= f
 
 -- | Run a monadic action with the current stack set
@@ -220,21 +220,21 @@ withWindowSet :: (WindowSet -> X a) -> X a
 withWindowSet f = gets windowset >>= f
 
 -- | Safely access window attributes.
-withWindowAttributes :: Display -> Window -> (WindowAttributes -> X ()) -> X ()
+withWindowAttributes :: Xlib.Display -> Xlib.Window -> (Xlib.WindowAttributes -> X ()) -> X ()
 withWindowAttributes dpy win f = do
-    wa <- userCode (io $ getWindowAttributes dpy win)
+    wa <- userCode (io $ Xlib.getWindowAttributes dpy win)
     catchX (whenJust wa f) (return ())
 
 -- | True if the given window is the root window
-isRoot :: Window -> X Bool
+isRoot :: Xlib.Window -> X Bool
 isRoot w = (w==) <$> asks theRoot
 
 -- | Wrapper for the common case of atom internment
-getAtom :: String -> X Atom
-getAtom str = withDisplay $ \dpy -> io $ internAtom dpy str False
+getAtom :: String -> X Xlib.Atom
+getAtom str = withDisplay $ \dpy -> io $ Xlib.internAtom dpy str False
 
 -- | Common non-predefined atoms
-atom_WM_PROTOCOLS, atom_WM_DELETE_WINDOW, atom_WM_STATE, atom_WM_TAKE_FOCUS :: X Atom
+atom_WM_PROTOCOLS, atom_WM_DELETE_WINDOW, atom_WM_STATE, atom_WM_TAKE_FOCUS :: X Xlib.Atom
 atom_WM_PROTOCOLS       = getAtom "WM_PROTOCOLS"
 atom_WM_DELETE_WINDOW   = getAtom "WM_DELETE_WINDOW"
 atom_WM_STATE           = getAtom "WM_STATE"
@@ -280,8 +280,8 @@ class Show (layout a) => LayoutClass layout a where
     --   use of more of the 'Workspace' information (for example,
     --   "XMonad.Layout.PerWorkspace").
     runLayout :: Workspace WorkspaceId (layout a) a
-              -> Rectangle
-              -> X ([(a, Rectangle)], Maybe (layout a))
+              -> Xlib.Rectangle
+              -> X ([(a, Xlib.Rectangle)], Maybe (layout a))
     runLayout (Workspace _ l ms) r = maybe (emptyLayout l r) (doLayout l r) ms
 
     -- | Given a 'Rectangle' in which to place the windows, and a 'Stack'
@@ -298,18 +298,18 @@ class Show (layout a) => LayoutClass layout a where
     -- Layouts which do not need access to the 'X' monad ('IO', window
     -- manager state, or configuration) and do not keep track of their
     -- own state should implement 'pureLayout' instead of 'doLayout'.
-    doLayout    :: layout a -> Rectangle -> Stack a
-                -> X ([(a, Rectangle)], Maybe (layout a))
+    doLayout    :: layout a -> Xlib.Rectangle -> Stack a
+                -> X ([(a, Xlib.Rectangle)], Maybe (layout a))
     doLayout l r s   = return (pureLayout l r s, Nothing)
 
     -- | This is a pure version of 'doLayout', for cases where we
     -- don't need access to the 'X' monad to determine how to lay out
     -- the windows, and we don't need to modify the layout itself.
-    pureLayout  :: layout a -> Rectangle -> Stack a -> [(a, Rectangle)]
+    pureLayout  :: layout a -> Xlib.Rectangle -> Stack a -> [(a, Xlib.Rectangle)]
     pureLayout _ r s = [(focus s, r)]
 
     -- | 'emptyLayout' is called when there are no windows.
-    emptyLayout :: layout a -> Rectangle -> X ([(a, Rectangle)], Maybe (layout a))
+    emptyLayout :: layout a -> Xlib.Rectangle -> X ([(a, Xlib.Rectangle)], Maybe (layout a))
     emptyLayout _ _ = return ([], Nothing)
 
     -- | 'handleMessage' performs message handling.  If
@@ -337,7 +337,7 @@ class Show (layout a) => LayoutClass layout a where
     description :: layout a -> String
     description      = show
 
-instance LayoutClass Layout Window where
+instance LayoutClass Layout Xlib.Window where
     runLayout (Workspace i (Layout l) ms) r = fmap (fmap Layout) `fmap` runLayout (Workspace i l ms) r
     doLayout (Layout l) r s  = fmap (fmap Layout) `fmap` doLayout l r s
     emptyLayout (Layout l) r = fmap (fmap Layout) `fmap` emptyLayout l r
@@ -367,7 +367,7 @@ fromMessage :: Message m => SomeMessage -> Maybe m
 fromMessage (SomeMessage m) = cast m
 
 -- X Events are valid Messages.
-instance Message Event
+instance Message Xlib.Event
 
 -- | 'LayoutMessages' are core messages that all layouts (especially stateful
 -- layouts) should consider handling.

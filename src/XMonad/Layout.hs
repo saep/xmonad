@@ -26,7 +26,7 @@ module XMonad.Layout (
 
 import XMonad.Core
 
-import Graphics.X11 (Rectangle(..))
+import qualified Graphics.X11 as Xlib (Rectangle(..))
 import qualified XMonad.StackSet as W
 import Control.Arrow ((***), second)
 import Control.Monad
@@ -81,10 +81,10 @@ instance LayoutClass Tall a where
 -- convention has the least number of windows in it.
 tile
     :: Rational  -- ^ @frac@, what proportion of the screen to devote to the master area
-    -> Rectangle -- ^ @r@, the rectangle representing the screen
+    -> Xlib.Rectangle -- ^ @r@, the rectangle representing the screen
     -> Int       -- ^ @nmaster@, the number of windows in the master pane
     -> Int       -- ^ @n@, the total number of windows to tile
-    -> [Rectangle]
+    -> [Xlib.Rectangle]
 tile f r nmaster n = if n <= nmaster || nmaster == 0
     then splitVertically n r
     else splitVertically nmaster r1 ++ splitVertically (n-nmaster) r2 -- two columns
@@ -93,20 +93,20 @@ tile f r nmaster n = if n <= nmaster || nmaster == 0
 --
 -- Divide the screen vertically into n subrectangles
 --
-splitVertically, splitHorizontally :: Int -> Rectangle -> [Rectangle]
+splitVertically, splitHorizontally :: Int -> Xlib.Rectangle -> [Xlib.Rectangle]
 splitVertically n r | n < 2 = [r]
-splitVertically n (Rectangle sx sy sw sh) = Rectangle sx sy sw smallh :
-    splitVertically (n-1) (Rectangle sx (sy+fromIntegral smallh) sw (sh-smallh))
+splitVertically n (Xlib.Rectangle sx sy sw sh) = Xlib.Rectangle sx sy sw smallh :
+    splitVertically (n-1) (Xlib.Rectangle sx (sy+fromIntegral smallh) sw (sh-smallh))
   where smallh = sh `div` fromIntegral n --hmm, this is a fold or map.
 
 -- Not used in the core, but exported
 splitHorizontally n = map mirrorRect . splitVertically n . mirrorRect
 
 -- Divide the screen into two rectangles, using a rational to specify the ratio
-splitHorizontallyBy, splitVerticallyBy :: RealFrac r => r -> Rectangle -> (Rectangle, Rectangle)
-splitHorizontallyBy f (Rectangle sx sy sw sh) =
-    ( Rectangle sx sy leftw sh
-    , Rectangle (sx + fromIntegral leftw) sy (sw-fromIntegral leftw) sh)
+splitHorizontallyBy, splitVerticallyBy :: RealFrac r => r -> Xlib.Rectangle -> (Xlib.Rectangle, Xlib.Rectangle)
+splitHorizontallyBy f (Xlib.Rectangle sx sy sw sh) =
+    ( Xlib.Rectangle sx sy leftw sh
+    , Xlib.Rectangle (sx + fromIntegral leftw) sy (sw-fromIntegral leftw) sh)
   where leftw = floor $ fromIntegral sw * f
 
 -- Not used in the core, but exported
@@ -124,8 +124,8 @@ instance LayoutClass l a => LayoutClass (Mirror l) a where
     description (Mirror l) = "Mirror "++ description l
 
 -- | Mirror a rectangle.
-mirrorRect :: Rectangle -> Rectangle
-mirrorRect (Rectangle rx ry rw rh) = Rectangle ry rx rh rw
+mirrorRect :: Xlib.Rectangle -> Xlib.Rectangle
+mirrorRect (Xlib.Rectangle rx ry rw rh) = Xlib.Rectangle ry rx rh rw
 
 ------------------------------------------------------------------------
 -- LayoutClass selection manager

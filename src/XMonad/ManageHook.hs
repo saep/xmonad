@@ -19,8 +19,8 @@
 module XMonad.ManageHook where
 
 import XMonad.Core
-import Graphics.X11.Xlib.Extras
-import Graphics.X11.Xlib (Display, Window, internAtom, wM_NAME)
+import qualified Graphics.X11.Xlib.Extras as Xlib
+import qualified Graphics.X11.Xlib as Xlib (Display, Window, internAtom, wM_NAME)
 import Control.Exception.Extensible (bracket, SomeException(..))
 import qualified Control.Exception.Extensible as E
 import Control.Monad.Reader
@@ -73,15 +73,15 @@ title = ask >>= \w -> liftX $ do
     d <- asks display
     let
         getProp =
-            (internAtom d "_NET_WM_NAME" False >>= getTextProperty d w)
-                `E.catch` \(SomeException _) -> getTextProperty d w wM_NAME
-        extract prop = do l <- wcTextPropertyToTextList d prop
+            (Xlib.internAtom d "_NET_WM_NAME" False >>= Xlib.getTextProperty d w)
+                `E.catch` \(SomeException _) -> Xlib.getTextProperty d w Xlib.wM_NAME
+        extract prop = do l <- Xlib.wcTextPropertyToTextList d prop
                           return $ if null l then "" else head l
-    io $ bracket getProp (xFree . tp_value) extract `E.catch` \(SomeException _) -> return ""
+    io $ bracket getProp (Xlib.xFree . Xlib.tp_value) extract `E.catch` \(SomeException _) -> return ""
 
 -- | Return the application name.
 appName :: Query String
-appName = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap resName $ io $ getClassHint d w)
+appName = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap Xlib.resName $ io $ Xlib.getClassHint d w)
 
 -- | Backwards compatible alias for 'appName'.
 resource :: Query String
@@ -89,17 +89,17 @@ resource = appName
 
 -- | Return the resource class.
 className :: Query String
-className = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap resClass $ io $ getClassHint d w)
+className = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap Xlib.resClass $ io $ Xlib.getClassHint d w)
 
 -- | A query that can return an arbitrary X property of type 'String',
 --   identified by name.
 stringProperty :: String -> Query String
 stringProperty p = ask >>= (\w -> liftX $ withDisplay $ \d -> fmap (fromMaybe "") $ getStringProperty d w p)
 
-getStringProperty :: Display -> Window -> String -> X (Maybe String)
+getStringProperty :: Xlib.Display -> Xlib.Window -> String -> X (Maybe String)
 getStringProperty d w p = do
   a  <- getAtom p
-  md <- io $ getWindowProperty8 d a w
+  md <- io $ Xlib.getWindowProperty8 d a w
   return $ fmap (map (toEnum . fromIntegral)) md
 
 -- | Modify the 'WindowSet' with a pure function.
