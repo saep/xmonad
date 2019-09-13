@@ -70,6 +70,7 @@ library
                    XMonad.ManageHook
                    XMonad.Operations
                    XMonad.StackSet
+                   XMonad.Polysemy
   other-modules:   Paths_xmonad
   hs-source-dirs:  src
   build-depends:   base                  >= 4.9 && < 5
@@ -80,6 +81,7 @@ library
                  , extensible-exceptions
                  , filepath
                  , mtl
+                 , polysemy
                  , process
                  , setlocale
                  , unix
