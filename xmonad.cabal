@@ -70,11 +70,11 @@ library
                    XMonad.ManageHook
                    XMonad.Operations
                    XMonad.StackSet
-                   XMonad.Polysemy
   other-modules:   Paths_xmonad
   hs-source-dirs:  src
   build-depends:   base                  >= 4.9 && < 5
                  , X11                   >= 1.8 && < 1.10
+                 , aeson
                  , containers
                  , data-default
                  , directory
@@ -86,7 +86,18 @@ library
                  , setlocale
                  , unix
                  , utf8-string           >= 0.3 && < 1.1
-  ghc-options:     -funbox-strict-fields -Wall -fno-warn-unused-do-bind
+  ghc-options:     -funbox-strict-fields -Wall -fno-warn-unused-do-bind -O2 -flate-specialise -fspecialise-aggressively
+  default-extensions:
+      DataKinds
+    , FlexibleContexts
+    , GADTs
+    , LambdaCase
+    , PolyKinds
+    , RankNTypes
+    , ScopedTypeVariables
+    , TypeApplications
+    , TypeOperators
+    , TypeFamilies
 
   if flag(testing)
     buildable: False
