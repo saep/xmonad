@@ -68,7 +68,7 @@ xmonad conf = do
     args <- getArgs
     case args of
         ["--help"]            -> usage
-        ["--recompile"]       -> recompile True >>= flip unless exitFailure
+        ["--recompile"]       -> recompile >>= flip unless exitFailure
         ["--restart"]         -> sendRestart
         ["--version"]         -> putStrLn $ unwords shortVersion
         ["--verbose-version"] -> putStrLn . unwords $ shortVersion ++ longVersion
@@ -121,7 +121,7 @@ buildLaunch = do
         , " but the compiled configuration should be called "
         , show compiledConfig
         ]
-      recompile False
+      recompile
       dir  <- getXMonadDataDir
       args <- getArgs
       executeFile (dir </> compiledConfig) False args Nothing
